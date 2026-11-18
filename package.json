@@ -1,0 +1,11 @@
+{
+  "name": "solax-diag",
+  "version": "1.0.0",
+  "description": "Diagnóstico en tiempo real de un inversor SolaX X3-MIC/PRO G2 por la API local del Pocket WiFi",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "mock": "node server.js --mock"
+  }
+}

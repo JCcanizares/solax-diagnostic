@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico SolaX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #e8ecef;
+    --panel: #f7f9fa;
+    --ink: #1c2630;
+    --muted: #5d6b78;
+    --rule: #c9d1d8;
+    /* Mismos colores que la app de SolaX para comparar de un vistazo */
+    --solar: #d99a06;
+    --grid: #6fa51c;
+    --load: #6a55d6;
+    --bad: #c62f2f;
+    --bad-bg: #fbe4e2;
+    --good: #2d7d46;
+    --good-bg: #e0f1e5;
+    --warn-bg: #fff2cc;
+    --sans: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --cond: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #161d24;
+      --panel: #1f2831;
+      --ink: #e4e9ee;
+      --muted: #93a1ae;
+      --rule: #34414d;
+      --solar: #f0b429;
+      --grid: #95cf45;
+      --load: #9a8af0;
+      --bad: #ff6b6b;
+      --bad-bg: #3d1f22;
+      --good: #6fcf8c;
+      --good-bg: #1b3326;
+      --warn-bg: #3a3218;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 var(--sans);
+    font-variant-numeric: tabular-nums;
+  }
+  main { padding: 16px clamp(12px, 2vw, 28px) 40px; }
+  h1, h2 { font-family: var(--cond); font-weight: 600; margin: 0; }
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.15rem; margin-bottom: 12px; }
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    background: var(--ink); color: var(--panel); border: 0; border-radius: 6px;
+    padding: 9px 16px; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--rule); }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 3px solid var(--load); outline-offset: 2px; }
+  input, select {
+    background: var(--panel); border: 1.5px solid var(--rule); border-radius: 6px; padding: 8px 10px; min-width: 0;
+  }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .status { color: var(--muted); font-size: .95rem; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--good); }
+  .dot.err { background: var(--bad); }
+
+  /* El balance: la pieza central */
+  .balance {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch;
+    background: var(--panel); border-radius: 10px; padding: 22px 8px;
+  }
+  .term { padding: 0 18px; border-left: 5px solid var(--c); }
+  .term .name { font-family: var(--cond); font-size: 1.05rem; font-weight: 600; color: var(--c); }
+  .term .value { font-family: var(--cond); font-weight: 700; font-size: clamp(2.4rem, 6vw, 4.2rem); line-height: 1.05; letter-spacing: -.01em; }
+  .term .value small { font-size: .45em; font-weight: 600; color: var(--muted); margin-left: 4px; }
+  .term .note { color: var(--muted); font-size: .95rem; min-height: 1.4em; }
+  .op { font-family: var(--cond); font-size: clamp(2rem, 5vw, 3.4rem); color: var(--muted); align-self: center; padding: 0 4px; }
+  .term.alarm .value { color: var(--bad); }
+  #t-solar { --c: var(--solar); } #t-grid { --c: var(--grid); } #t-load { --c: var(--load); }
+
+  .alerts { margin: 12px 0 0; display: grid; gap: 8px; }
+  .alert { padding: 10px 14px; border-radius: 8px; background: var(--bad-bg); color: var(--bad); font-weight: 500; }
+  .alert.warn { background: var(--warn-bg); color: var(--ink); }
+
+  .chart-panel { margin-top: 16px; }
+  .bottom { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+  section.panel { background: var(--panel); border-radius: 10px; padding: 18px; min-width: 0; }
+
+  .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .chart-head h2 { margin: 0; }
+  .chart-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .range { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .range label { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: .92rem; }
+  .range-info { color: var(--muted); font-size: .92rem; margin: 0 0 6px; min-height: 1.3em; }
+  .range-info.active { color: var(--ink); font-weight: 500; }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: .9rem; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--c); vertical-align: middle; margin-right: 6px; }
+  canvas { width: 100%; height: clamp(340px, 58vh, 820px); display: block; }
+
+  .mark-form { display: flex; gap: 8px; margin-top: 10px; }
+  .mark-form input { flex: 1; }
+
+  /* Prueba de carga */
+  .test-fields { display: grid; grid-template-columns: 1fr 120px; gap: 8px; margin-bottom: 10px; }
+  .test-fields label { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
+  .test-actions { display: flex; gap: 8px; }
+  .step { margin: 14px 0 6px; font-weight: 500; }
+  .deltas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .delta { border-top: 3px solid var(--c); padding-top: 6px; }
+  .delta .k { font-size: .85rem; color: var(--muted); }
+  .delta .v { font-family: var(--cond); font-weight: 700; font-size: 1.5rem; }
+  .verdict { padding: 10px 12px; border-radius: 8px; background: var(--bg); }
+  .verdict.good { background: var(--good-bg); color: var(--good); font-weight: 600; }
+  .verdict.bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+  .verdict.warn { background: var(--warn-bg); }
+  .results { margin-top: 14px; font-size: .92rem; color: var(--muted); padding-left: 18px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-family: var(--cond); font-weight: 600; color: var(--muted); }
+  dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 6px 12px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-family: var(--cond); font-weight: 600; }
+  .raw { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px; margin-top: 10px; font-size: .85rem; }
+  .raw div { padding: 3px 6px; border-radius: 4px; background: var(--bg); }
+  .raw div.nz { box-shadow: inset 3px 0 0 var(--load); }
+  .raw b { color: var(--muted); font-weight: 500; margin-right: 6px; }
+  .head-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  dialog {
+    border: 0; border-radius: 10px; padding: 24px; width: min(440px, calc(100vw - 32px));
+    background: var(--panel); color: var(--ink);
+  }
+  dialog::backdrop { background: rgb(20 28 36 / .55); }
+  dialog h2 { font-size: 1.3rem; }
+  dialog p { color: var(--muted); margin: 4px 0 16px; }
+  .field { display: grid; gap: 4px; margin-bottom: 14px; }
+  .field span { font-weight: 500; }
+  .field small { color: var(--muted); }
+  .check { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+  .check input { width: 18px; height: 18px; }
+  .form-error { background: var(--bad-bg); color: var(--bad); padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; font-weight: 500; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .foot { color: var(--muted); font-size: .88rem; margin-top: 18px; word-break: break-all; }
+
+  @media (max-width: 1400px) {
+    .bottom { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 800px) {
+    .bottom { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .balance { grid-template-columns: 1fr; gap: 14px; padding: 16px 4px; }
+    .op { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Diagnóstico SolaX</h1>
+    <div class="head-right">
+      <div class="status"><span class="dot" id="dot"></span><span id="status-text">Conectando…</span></div>
+      <button type="button" class="secondary" id="open-config">Conexión</button>
+    </div>
+  </header>
+
+  <div class="balance" aria-live="polite">
+    <div class="term" id="t-solar">
+      <div class="name">Producción</div>
+      <div class="value"><span id="v-solar">—</span><small>W</small></div>
+      <div class="note" id="n-solar"></div>
+    </div>
+    <div class="op" aria-hidden="true">−</div>
+    <div class="term" id="t-grid">
+      <div class="name">Red</div>
+      <div class="value"><span id="v-grid">—</span><small>W</small></div>
+      <div class="note" id="n-grid"></div>
+    </div>
+    <div class="op" aria-hidden="true">=</div>
+    <div class="term" id="t-load">
+      <div class="name">Consumo de la casa</div>
+      <div class="value"><span id="v-load">—</span><small>W</small></div>
+      <div class="note" id="n-load"></div>
+    </div>
+  </div>
+  <div class="alerts" id="alerts"></div>
+
+  <section class="panel chart-panel">
+    <div class="chart-head">
+      <h2>Evolución</h2>
+      <div class="legend">
+        <span style="--c: var(--solar)">Producción AC</span>
+        <span style="--c: var(--grid)">Red (+ exporta)</span>
+        <span style="--c: var(--load)">Consumo</span>
+      </div>
+      <div class="chart-controls">
+      <select id="window" aria-label="Ventana de tiempo">
+        <option value="5">5 min</option>
+        <option value="15" selected>15 min</option>
+        <option value="30">30 min</option>
+        <option value="60">1 h</option>
+        <option value="180">3 h</option>
+        <option value="360">6 h</option>
+        <option value="720">12 h</option>
+        <option value="1440">24 h</option>
+      </select>
+      <form class="range" id="range-form">
+        <label>Desde <input type="datetime-local" id="range-from" required></label>
+        <label>Hasta <input type="datetime-local" id="range-to" required></label>
+        <button type="submit" class="secondary">Ver rango</button>
+        <button type="button" id="range-live" hidden>Volver a tiempo real</button>
+      </form>
+      </div>
+    </div>
+    <p class="range-info" id="range-info"></p>
+    <canvas id="chart"></canvas>
+    <form class="mark-form" id="mark-form">
+      <input id="mark-label" placeholder="Qué has hecho (p. ej. apago el termo)" aria-label="Texto de la marca">
+      <button type="submit" class="secondary">Añadir marca</button>
+    </form>
+  </section>
+
+  <div class="bottom">
+    <section class="panel">
+      <h2>Prueba de carga</h2>
+      <div class="test-fields">
+        <label>Aparato<input id="test-name" placeholder="Horno, hervidor…"></label>
+        <label>Potencia (W)<input id="test-watts" type="number" min="0" step="50" placeholder="2000"></label>
+      </div>
+      <div class="test-actions">
+        <button id="test-start">Iniciar prueba</button>
+        <button id="test-stop" class="secondary" disabled>Terminar prueba</button>
+      </div>
+      <p class="step" id="test-step">Deja la casa estable, pulsa «Iniciar prueba» y enciende un solo aparato.</p>
+      <div class="deltas">
+        <div class="delta" style="--c: var(--solar)"><div class="k">Δ Producción</div><div class="v" id="d-solar">—</div></div>
+        <div class="delta" style="--c: var(--grid)"><div class="k">Δ Red</div><div class="v" id="d-grid">—</div></div>
+        <div class="delta" style="--c: var(--load)"><div class="k">Δ Consumo</div><div class="v" id="d-load">—</div></div>
+      </div>
+      <div class="verdict" id="verdict">Al encender un aparato, lo correcto es que la red baje y el consumo suba en la misma cantidad.</div>
+      <ol class="results" id="results"></ol>
+    </section>
+    <section class="panel">
+      <h2>Salida del inversor por fase</h2>
+      <table>
+        <thead><tr><th>Fase</th><th>V</th><th>A</th><th>W</th></tr></thead>
+        <tbody id="phases"></tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Strings de placas</h2>
+      <table>
+        <thead><tr><th>String</th><th>V</th><th>A</th><th>W</th></tr></thead>
+        <tbody id="strings"></tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Inversor y contador</h2>
+      <dl>
+        <dt>Estado</dt><dd id="i-mode">—</dd>
+        <dt>Producción hoy</dt><dd id="i-today">—</dd>
+        <dt>Contador: exportado total</dt><dd id="i-exp">—</dd>
+        <dt>Contador: importado total</dt><dd id="i-imp">—</dd>
+        <dt>Frecuencia</dt><dd id="i-hz">—</dd>
+        <dt>Firmware dongle</dt><dd id="i-ver">—</dd>
+      </dl>
+    </section>
+  </div>
+
+  <details>
+    <summary>Datos en bruto del dongle</summary>
+    <div class="raw" id="raw"></div>
+  </details>
+
+  <p class="foot" id="foot"></p>
+</main>
+
+<dialog id="config-dialog" aria-labelledby="config-title">
+  <form id="config-form" method="dialog">
+    <h2 id="config-title">Conectar con el dongle</h2>
+    <p>Tu PC y el Pocket WiFi tienen que estar en la misma red.</p>
+    <label class="field">
+      <span>IP del dongle</span>
+      <input id="cfg-ip" name="ip" placeholder="192.168.18.144" autocomplete="off" required>
+      <small>La puedes ver en la lista de dispositivos de tu router.</small>
+    </label>
+    <label class="field">
+      <span>Contraseña</span>
+      <input id="cfg-pwd" name="pwd" type="password" autocomplete="off">
+      <small>Es el número de registro del Pocket WiFi: está en su etiqueta y en SolaX Cloud.</small>
+    </label>
+    <label class="field">
+      <span>Leer cada</span>
+      <select id="cfg-interval" name="interval">
+        <option value="2000">2 segundos</option>
+        <option value="3000">3 segundos</option>
+        <option value="5000">5 segundos</option>
+        <option value="10000">10 segundos</option>
+      </select>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="cfg-remember">
+      Recordar en este equipo (se guarda en config.json)
+    </label>
+    <div class="form-error" id="cfg-error" hidden></div>
+    <div class="form-actions">
+      <button type="button" class="secondary" id="cfg-cancel">Cancelar</button>
+      <button type="submit" id="cfg-submit">Conectar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const nf = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0, useGrouping: 'always' });
+const nf1 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 });
+const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + nf.format(Math.abs(n));
+
+const state = { history: [], marks: [], status: null, last: null, test: null, interval: 3000 };
+
+// ---------- Panel principal ----------
+function renderSample(s) {
+  $('v-solar').textContent = nf.format(s.acPower);
+  $('n-solar').textContent = `Placas (DC): ${nf.format(s.dcPower)} W`;
+
+  $('v-grid').textContent = signed(s.grid);
+  $('n-grid').textContent = s.grid > 20 ? 'Exportando' : s.grid < -20 ? 'Importando' : 'Equilibrio';
+
+  $('v-load').textContent = nf.format(s.load);
+  $('n-load').textContent = 'Calculado: producción − red';
+
+  const loadBad = s.load < -50;
+  $('t-load').classList.toggle('alarm', loadBad);
+  $('t-grid').classList.toggle('alarm', s.grid > s.acPower + 50);
+
+  $('phases').innerHTML = s.phases.map((p, i) =>
+    `<tr><td>L${i + 1}</td><td>${nf1.format(p.v)}</td><td>${nf1.format(p.a)}</td><td>${nf.format(p.w)}</td></tr>`).join('');
+  $('strings').innerHTML = s.dc.length
+    ? s.dc.map((d, i) => `<tr><td>PV${i + 1}</td><td>${nf1.format(d.v)}</td><td>${nf1.format(d.a)}</td><td>${nf.format(d.w)}</td></tr>`).join('')
+    : '<tr><td colspan="4">Sin producción</td></tr>';
+
+  $('i-mode').textContent = s.runMode;
+  $('i-today').textContent = `${nf1.format(s.yieldToday)} kWh`;
+  $('i-exp').textContent = `${nf2.format(s.meterExportTotal)} kWh`;
+  $('i-imp').textContent = `${nf2.format(s.meterImportTotal)} kWh`;
+  $('i-hz').textContent = s.phases.map((p) => nf2.format(p.hz)).join(' / ') + ' Hz';
+  $('i-ver').textContent = s.ver;
+
+  if (s.raw) {
+    $('raw').innerHTML = s.raw.map((v, i) => `<div class="${v ? 'nz' : ''}"><b>${i}</b>${v}</div>`).join('');
+  }
+  renderAlerts();
+}
+
+function renderAlerts() {
+  const s = state.last, st = state.status, out = [];
+  if (s) {
+    if (s.load < -50) out.push(['', `Consumo negativo (${nf.format(s.load)} W). Sin batería es imposible: el contador está midiendo mal en este momento.`]);
+    if (s.grid > s.acPower + 50) out.push(['', `La red marca ${nf.format(s.grid)} W de exportación con solo ${nf.format(s.acPower)} W de producción.`]);
+  }
+  if (st?.unchangedSince) {
+    const secs = Math.round((Date.now() - st.unchangedSince) / 1000);
+    if (secs >= 10) out.push(['warn', `El dongle devuelve exactamente los mismos datos desde hace ${secs} s. Puede que el inversor no los esté actualizando.`]);
+  }
+  $('alerts').innerHTML = out.map(([cls, txt]) => `<div class="alert ${cls}">${txt}</div>`).join('');
+}
+
+function renderStatus() {
+  const st = state.status;
+  if (!st) return;
+  $('dot').className = 'dot ' + (st.ok ? 'ok' : 'err');
+  if (st.ok && st.lastOk) {
+    const ago = Math.max(0, Math.round((Date.now() - st.lastOk) / 1000));
+    $('status-text').textContent = `Última lectura hace ${ago} s (${st.latency} ms), cada ${st.interval / 1000} s`;
+  } else if (st.configured === false) {
+    $('status-text').textContent = 'Sin configurar';
+  } else {
+    $('status-text').textContent = `${st.error || 'Sin datos'}. Reintentando…`;
+  }
+}
+setInterval(() => { renderStatus(); renderAlerts(); }, 1000);
+
+// ---------- Gráfica ----------
+const canvas = $('chart');
+const ctx = canvas.getContext('2d');
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function drawChart() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const range = state.range;
+  const tMax = range ? range.to : Date.now();
+  const tMin = range ? range.from : tMax - Number($('window').value) * 60000;
+  const minutes = (tMax - tMin) / 60000;
+  const source = range ? range.points : state.history;
+  const markSource = range ? range.marks : state.marks;
+  const pts = source.filter((s) => s.t >= tMin && s.t <= tMax);
+  const padL = 52, padR = 8, padT = 10, padB = 24;
+  const pw = W - padL - padR, ph = H - padT - padB;
+
+  let lo = -500, hi = 500;
+  for (const s of pts) {
+    lo = Math.min(lo, s.grid, s.load, s.acPower);
+    hi = Math.max(hi, s.grid, s.load, s.acPower);
+  }
+  const step = niceStep((hi - lo) / 5);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+
+  const x = (t) => padL + ((t - tMin) / (tMax - tMin)) * pw;
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * ph;
+
+  ctx.font = `12px ${css('--sans')}`;
+  ctx.fillStyle = css('--muted');
+  ctx.strokeStyle = css('--rule');
+  ctx.lineWidth = 1;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let v = lo; v <= hi + 1; v += step) {
+    ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(W - padR, y(v)); ctx.stroke();
+    ctx.fillText(nf.format(v), padL - 6, y(v));
+  }
+  ctx.strokeStyle = css('--muted');
+  ctx.beginPath(); ctx.moveTo(padL, y(0)); ctx.lineTo(W - padR, y(0)); ctx.stroke();
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  // Paso del eje de tiempo: el primero que deje como mucho ~10 etiquetas
+  const tickMin = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080]
+    .find((m) => minutes / m <= 10) || 10080;
+  const tick = tickMin * 60000;
+  const withDate = minutes > 20 * 60 || new Date(tMin).toDateString() !== new Date(tMax).toDateString();
+  const tz = new Date().getTimezoneOffset() * 60000; // ticks en horas locales redondas
+  for (let t = Math.ceil((tMin - tz) / tick) * tick + tz; t <= tMax; t += tick) {
+    const d = new Date(t);
+    const hm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const label = withDate ? `${d.getDate()}/${d.getMonth() + 1} ${hm}` : hm;
+    const half = ctx.measureText(label).width / 2;
+    if (x(t) - half < padL - 20 || x(t) + half > W) continue;
+    ctx.fillText(label, x(t), H - padB + 6);
+  }
+
+  // Marcas (las etiquetas que se solaparían se omiten; la línea siempre se dibuja)
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.textBaseline = 'top';
+  let labelEnd = -Infinity;
+  for (const m of markSource.filter((m) => m.t >= tMin && m.t <= tMax)) {
+    ctx.strokeStyle = css('--ink'); ctx.fillStyle = css('--ink');
+    const mx = x(m.t);
+    ctx.beginPath(); ctx.moveTo(mx, padT); ctx.lineTo(mx, padT + ph); ctx.stroke();
+    const label = m.label.slice(0, 28);
+    const w = ctx.measureText(label).width;
+    const nearRight = mx + w + 8 > W - padR;
+    const left = nearRight ? mx - 4 - w : mx + 4;
+    if (left < labelEnd + 6) continue;
+    ctx.textAlign = 'left';
+    ctx.fillText(label, left, padT + 2);
+    labelEnd = left + w;
+  }
+  ctx.restore();
+
+  // Con muchas lecturas por píxel se dibujan el mínimo y el máximo de cada columna,
+  // así los picos cortos siguen viéndose en las ventanas largas.
+  const gapMs = Math.max(state.interval * 4, 20000, (range?.bucketMs || 0) * 3);
+  const line = (key, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = pts.length > pw ? 1.6 : 2.2; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let col = null, mn = null, mx = null, prevT = null, started = false;
+    const flush = () => {
+      if (col === null) return;
+      const [a, b] = mn.t <= mx.t ? [mn, mx] : [mx, mn];
+      for (const p of a === b ? [a] : [a, b]) {
+        started ? ctx.lineTo(x(p.t), y(p[key])) : ctx.moveTo(x(p.t), y(p[key]));
+        started = true;
+      }
+    };
+    for (const s of pts) {
+      if (prevT !== null && s.t - prevT > gapMs) { flush(); col = null; started = false; }
+      prevT = s.t;
+      const c = Math.floor(x(s.t));
+      if (c !== col) { flush(); col = c; mn = mx = s; continue; }
+      if (s[key] < mn[key]) mn = s;
+      if (s[key] > mx[key]) mx = s;
+    }
+    flush();
+    ctx.stroke();
+  };
+  line('acPower', css('--solar'));
+  line('grid', css('--grid'));
+  line('load', css('--load'));
+
+  if (!pts.length) {
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(range ? 'No hay lecturas guardadas en este rango' : 'Esperando lecturas del dongle…', padL + pw / 2, padT + ph / 2);
+  }
+}
+function niceStep(raw) {
+  const p = 10 ** Math.floor(Math.log10(Math.max(raw, 1)));
+  return [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= raw);
+}
+$('window').addEventListener('change', () => { if (state.range) exitRange(); drawChart(); });
+
+// ---------- Filtro por rango de fechas ----------
+const toLocalInput = (t) => {
+  const d = new Date(t - new Date(t).getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+};
+$('range-from').value = toLocalInput(Date.now() - 3600000);
+$('range-to').value = toLocalInput(Date.now());
+
+$('range-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const from = new Date($('range-from').value).getTime();
+  const to = new Date($('range-to').value).getTime();
+  const info = $('range-info');
+  if (!(to > from)) { info.className = 'range-info'; info.textContent = 'La fecha «Hasta» tiene que ser posterior a «Desde».'; return; }
+  info.className = 'range-info'; info.textContent = 'Cargando lecturas del rango…';
+  try {
+    const res = await fetch(`/range?from=${from}&to=${to}`);
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.error);
+    state.range = r;
+    $('range-live').hidden = false;
+    const fmt = (t) => new Date(t).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    info.className = 'range-info active';
+    info.textContent = `Mostrando ${fmt(from)} – ${fmt(to)}: ${nf.format(r.total)} lecturas${r.bucketMs ? ' (picos conservados)' : ''}. La gráfica no se actualiza en este modo.`;
+    drawChart();
+  } catch (err) {
+    info.className = 'range-info'; info.textContent = `No se ha podido cargar el rango: ${err.message}`;
+  }
+});
+
+function exitRange() {
+  state.range = null;
+  $('range-live').hidden = true;
+  $('range-info').className = 'range-info';
+  $('range-info').textContent = '';
+}
+$('range-live').addEventListener('click', () => { exitRange(); drawChart(); });
+window.addEventListener('resize', drawChart);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawChart);
+
+// ---------- Marcas ----------
+async function postMark(label, kind = 'marca') {
+  await fetch('/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, kind }) });
+}
+$('mark-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const label = $('mark-label').value.trim() || 'Marca';
+  $('mark-label').value = '';
+  await postMark(label);
+});
+
+// ---------- Prueba de carga ----------
+const avg = (arr, k) => arr.reduce((t, s) => t + s[k], 0) / arr.length;
+
+$('test-start').addEventListener('click', async () => {
+  const before = state.history.slice(-3);
+  if (before.length < 2) {
+    $('test-step').textContent = 'Espera a tener al menos dos lecturas antes de empezar.';
+    return;
+  }
+  const name = $('test-name').value.trim() || 'Aparato';
+  const watts = Number($('test-watts').value) || null;
+  state.test = {
+    name, watts, startT: Date.now(),
+    base: { acPower: avg(before, 'acPower'), grid: avg(before, 'grid'), load: avg(before, 'load') },
+  };
+  $('test-start').disabled = true; $('test-stop').disabled = false;
+  $('test-step').textContent = `Enciende ahora: ${name}. Espera dos o tres lecturas.`;
+  await postMark(`Inicio prueba: ${name}`, 'prueba');
+  evaluateTest();
+});
+
+$('test-stop').addEventListener('click', async () => {
+  const r = evaluateTest();
+  const t = state.test;
+  state.test = null;
+  $('test-start').disabled = false; $('test-stop').disabled = true;
+  $('test-step').textContent = 'Prueba terminada. Apaga el aparato y espera antes de la siguiente.';
+  if (r) {
+    const summary = `${t.name}: red ${signed(r.dGrid)} W, consumo ${signed(r.dLoad)} W. ${r.text}`;
+    const li = document.createElement('li');
+    li.textContent = `${new Date().toLocaleTimeString('es-ES')} ${summary}`;
+    $('results').prepend(li);
+    await postMark(`Fin prueba: ${summary}`, 'prueba');
+  } else {
+    await postMark(`Fin prueba: ${t.name} (sin datos suficientes)`, 'prueba');
+  }
+});
+
+function evaluateTest() {
+  const t = state.test;
+  if (!t) return null;
+  const after = state.history.filter((s) => s.t > t.startT).slice(-2);
+  if (!after.length) {
+    setVerdict('', 'Esperando la primera lectura tras encender el aparato…');
+    ['d-solar', 'd-grid', 'd-load'].forEach((id) => ($(id).textContent = '—'));
+    return null;
+  }
+  const r = {
+    dAc: avg(after, 'acPower') - t.base.acPower,
+    dGrid: avg(after, 'grid') - t.base.grid,
+    dLoad: avg(after, 'load') - t.base.load,
+  };
+  $('d-solar').textContent = signed(r.dAc);
+  $('d-grid').textContent = signed(r.dGrid);
+  $('d-load').textContent = signed(r.dLoad);
+
+  let cls = '', text;
+  if (Math.abs(r.dGrid) < 80 && Math.abs(r.dLoad) < 80) {
+    text = 'Sin cambio todavía. ¿Está encendido el aparato?';
+  } else if (r.dGrid > 80 && r.dLoad < -80) {
+    cls = 'bad'; text = 'Signo invertido: el aparato aparece como exportación.';
+  } else if (r.dGrid < -80 && r.dLoad > 80) {
+    const ratio = t.watts ? r.dLoad / t.watts : null;
+    if (ratio === null) { cls = 'good'; text = 'Signo correcto: la red baja y el consumo sube.'; }
+    else if (ratio > 0.75 && ratio < 1.3) { cls = 'good'; text = `Correcto: el consumo sube un ${Math.round(ratio * 100)} % de la potencia esperada.`; }
+    else { cls = 'warn'; text = `Signo correcto, pero el consumo solo cambia un ${Math.round(ratio * 100)} % de lo esperado. Puede que una fase se mida mal.`; }
+  } else {
+    cls = 'bad'; text = 'Resultado incoherente: red y consumo no se mueven en sentidos opuestos.';
+  }
+  if (Math.abs(r.dAc) > 300) {
+    text += ' Ojo: la producción ha cambiado durante la prueba; mejor repetirla de noche o con sol estable.';
+    if (cls === 'good') cls = 'warn';
+  }
+  setVerdict(cls, text);
+  r.text = text;
+  return r;
+}
+function setVerdict(cls, text) {
+  $('verdict').className = 'verdict ' + cls;
+  $('verdict').textContent = text;
+}
+
+// ---------- Configuración de la conexión ----------
+const dialog = $('config-dialog');
+
+function openConfig() {
+  const c = state.config || {};
+  const def = c.defaults || {};
+  $('cfg-ip').value = c.ip || def.ip || '';
+  $('cfg-pwd').value = c.hasPwd ? '' : (def.pwd || '');
+  $('cfg-pwd').placeholder = c.hasPwd ? 'Guardada. Déjala vacía para mantenerla' : 'Número de registro';
+  $('cfg-pwd').required = !c.hasPwd && !c.mock;
+  $('cfg-ip').required = !c.mock;
+  const sel = $('cfg-interval');
+  sel.value = String(c.interval || 3000);
+  if (!sel.value) sel.value = '3000';
+  $('cfg-cancel').hidden = !c.configured;
+  $('cfg-error').hidden = true;
+  if (!dialog.open) dialog.showModal();
+  $('cfg-submit').focus();
+}
+
+$('open-config').addEventListener('click', openConfig);
+$('cfg-cancel').addEventListener('click', () => dialog.close());
+dialog.addEventListener('cancel', (e) => { if (!state.config?.configured) e.preventDefault(); });
+
+$('config-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('cfg-submit');
+  btn.disabled = true; btn.textContent = 'Probando conexión…';
+  $('cfg-error').hidden = true;
+  try {
+    const res = await fetch('/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ip: $('cfg-ip').value.trim(),
+        pwd: $('cfg-pwd').value.trim(),
+        interval: Number($('cfg-interval').value),
+        remember: $('cfg-remember').checked,
+      }),
+    });
+    const r = await res.json();
+    if (!r.ok) throw new Error(r.error);
+    state.config = r.config;
+    dialog.close();
+  } catch (err) {
+    $('cfg-error').textContent = err.message || 'No se ha podido conectar';
+    $('cfg-error').hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Conectar';
+  }
+});
+
+function renderFoot() {
+  const c = state.config || {};
+  const where = c.mock ? 'Modo simulación.' : c.ip ? `Dongle en ${c.ip}.` : 'Sin dongle configurado.';
+  $('foot').textContent = `${where} Registro CSV: ${state.logPath || ''}`;
+}
+
+// ---------- Conexión con el servidor ----------
+const es = new EventSource('/events');
+es.addEventListener('init', (e) => {
+  const d = JSON.parse(e.data);
+  state.history = d.history; state.marks = d.marks; state.status = d.status;
+  state.interval = d.status.interval;
+  state.config = d.config; state.logPath = d.logPath;
+  if (d.last) { state.last = d.last; renderSample(d.last); }
+  renderFoot(); renderStatus(); drawChart();
+  if (!d.config.configured) openConfig();
+});
+es.addEventListener('sample', (e) => {
+  const s = JSON.parse(e.data);
+  state.last = s;
+  state.history.push({ t: s.t, acPower: s.acPower, dcPower: s.dcPower, grid: s.grid, load: s.load });
+  const cutoff = Date.now() - 24 * 60 * 60000;
+  while (state.history.length && state.history[0].t < cutoff) state.history.shift();
+  renderSample(s); drawChart();
+  if (state.test) evaluateTest();
+});
+es.addEventListener('status', (e) => {
+  state.status = JSON.parse(e.data);
+  state.interval = state.status.interval;
+  renderStatus();
+});
+es.addEventListener('config', (e) => { state.config = JSON.parse(e.data); renderFoot(); });
+es.addEventListener('mark', (e) => { state.marks.push(JSON.parse(e.data)); drawChart(); });
+es.onerror = () => {
+  $('dot').className = 'dot err';
+  $('status-text').textContent = 'Sin conexión con el servidor local. ¿Sigue ejecutándose node server.js?';
+};
+</script>
+</body>
+</html>
